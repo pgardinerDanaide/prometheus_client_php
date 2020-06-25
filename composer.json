@@ -1,5 +1,5 @@
 {
-    "name": "Danaide/prometheus_client_php",
+    "name": "pgardinerDanaide/prometheus_client_php",
     "description": "Prometheus instrumentation library for PHP applications.",
     "type": "library",
     "license": "Apache-2.0",
