@@ -226,8 +226,8 @@ LUA
         $this->openConnection();
         $metaData = $data;
         unset($metaData['value']);
-        unset($metaData['labelValues']);
         unset($metaData['command']);
+        unset($metaData['labels']);
         $this->redis->eval(
             <<<LUA
 local result = redis.call(ARGV[1], KEYS[1], ARGV[2], ARGV[3])
@@ -249,7 +249,7 @@ LUA
                 $this->toMetricKey($data),
                 self::$prefix . Gauge::TYPE . self::PROMETHEUS_METRIC_KEYS_SUFFIX,
                 $this->getRedisCommand($data['command']),
-                json_encode($data['labelValues']),
+                json_encode($data['labels']),
                 $data['value'],
                 json_encode($metaData),
             ],
@@ -372,13 +372,12 @@ LUA
             foreach ($raw as $k => $value) {
                 $gauge['samples'][] = [
                     'name' => $gauge['name'],
-                    'labelNames' => [],
-                    'labelValues' => json_decode($k, true),
+                    'labels' => json_decode($k, true),
                     'value' => $value,
                 ];
             }
             usort($gauge['samples'], function ($a, $b) {
-                return strcmp(implode("", $a['labelValues']), implode("", $b['labelValues']));
+                return strcmp(implode("", $a['labels']), implode("", $b['labels']));
             });
             $gauges[] = $gauge;
         }
