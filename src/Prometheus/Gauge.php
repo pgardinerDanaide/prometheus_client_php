@@ -16,15 +16,12 @@ class Gauge extends Collector
      */
     public function set(float $value, array $labels = []): void
     {
-        $this->assertLabelsAreDefinedCorrectly($labels);
-
         $this->storageAdapter->updateGauge(
             [
                 'name' => $this->getName(),
                 'help' => $this->getHelp(),
                 'type' => $this->getType(),
-                'labelNames' => $this->getLabelNames(),
-                'labelValues' => $labels,
+                'labels' => $labels,
                 'value' => $value,
                 'command' => Adapter::COMMAND_SET,
             ]
@@ -53,15 +50,12 @@ class Gauge extends Collector
      */
     public function incBy($value, array $labels = []): void
     {
-        $this->assertLabelsAreDefinedCorrectly($labels);
-
         $this->storageAdapter->updateGauge(
             [
                 'name' => $this->getName(),
                 'help' => $this->getHelp(),
                 'type' => $this->getType(),
-                'labelNames' => $this->getLabelNames(),
-                'labelValues' => $labels,
+                'labels' => $labels,
                 'value' => $value,
                 'command' => Adapter::COMMAND_INCREMENT_FLOAT,
             ]

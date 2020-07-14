@@ -38,16 +38,10 @@ class RenderTextFormat
     private function renderSample(MetricFamilySamples $metric, Sample $sample): string
     {
         $escapedLabels = [];
-
-        $labelNames = $metric->getLabelNames();
-        if ($metric->hasLabelNames() || $sample->hasLabelNames()) {
-            $labels = array_combine(array_merge($labelNames, $sample->getLabelNames()), $sample->getLabelValues());
-            foreach ($labels as $labelName => $labelValue) {
-                $escapedLabels[] = $labelName . '="' . $this->escapeLabelValue($labelValue) . '"';
-            }
-            return $sample->getName() . '{' . implode(',', $escapedLabels) . '} ' . $sample->getValue();
+        foreach ($sample->getLabels() as $labelName => $labelValue) {
+            $escapedLabels[] = $labelName . '="' . $this->escapeLabelValue($labelValue) . '"';
         }
-        return $sample->getName() . ' ' . $sample->getValue();
+        return $sample->getName() . '{' . implode(',', $escapedLabels) . '} ' . $sample->getValue();
     }
 
     /**

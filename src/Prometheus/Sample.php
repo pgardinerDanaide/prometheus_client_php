@@ -14,12 +14,7 @@ class Sample
     /**
      * @var array
      */
-    private $labelNames;
-
-    /**
-     * @var array
-     */
-    private $labelValues;
+    private $labels;
 
     /**
      * @var int|double
@@ -33,8 +28,7 @@ class Sample
     public function __construct(array $data)
     {
         $this->name = $data['name'];
-        $this->labelNames = $data['labelNames'];
-        $this->labelValues = $data['labelValues'];
+        $this->labels = $data['labels'];
         $this->value = $data['value'];
     }
 
@@ -49,17 +43,9 @@ class Sample
     /**
      * @return array
      */
-    public function getLabelNames(): array
+    public function getLabels(): array
     {
-        return (array)$this->labelNames;
-    }
-
-    /**
-     * @return array
-     */
-    public function getLabelValues(): array
-    {
-        return (array)$this->labelValues;
+        return (array)$this->labels;
     }
 
     /**
@@ -73,8 +59,8 @@ class Sample
     /**
      * @return bool
      */
-    public function hasLabelNames(): bool
+    public function hasLabels(): bool
     {
-        return !empty($this->labelNames);
+        return !empty($this->labels);
     }
 }

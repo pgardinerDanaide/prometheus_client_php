@@ -32,15 +32,12 @@ class Counter extends Collector
      */
     public function incBy($count, array $labels = []): void
     {
-        $this->assertLabelsAreDefinedCorrectly($labels);
-
         $this->storageAdapter->updateCounter(
             [
                 'name' => $this->getName(),
                 'help' => $this->getHelp(),
                 'type' => $this->getType(),
-                'labelNames' => $this->getLabelNames(),
-                'labelValues' => $labels,
+                'labels' => $labels,
                 'value' => $count,
                 'command' => Adapter::COMMAND_INCREMENT_INTEGER,
             ]
