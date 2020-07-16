@@ -269,22 +269,38 @@ LUA
         unset($metaData['labelValues']);
         unset($metaData['command']);
 
+        $field_key = [
+            'key' => $metaData['key'],
+            'labels' => $metaData['labels'],
+        ];
+
         $newArgs = [
             $this->toMetricKey($data),
             self::$prefix . Counter::TYPE . self::PROMETHEUS_METRIC_KEYS_SUFFIX,
             $this->getRedisCommand($data['command']),
+            $metaData['key'],
             $data['value'],
-            json_encode($metaData['labels']),
+            json_encode($field_key),
             json_encode($metaData)
         ];
-        $this->redis->eval(
+        $ret = $this->redis->eval(
             <<<LUA
-local result = redis.call(ARGV[1], KEYS[1], ARGV[3], ARGV[2])
-if result == tonumber(ARGV[2]) then
-    redis.call('hMSet', KEYS[1], '__meta', ARGV[4])
-    redis.call('sAdd', KEYS[2], KEYS[1])
+local row = redis.call('hexists', KEYS[1], ARGV[4])
+if row == 0 then
+    local key = '*\"key\":"'..ARGV[2]..'"*'
+    local pre = redis.call('hscan', KEYS[1], 0, 'match', key)
+    if type(pre) == "table" and next(pre[2]) ~= nil then
+      local value = pre[2][2]
+      redis.call('hdel', KEYS[1], pre[2][1])
+      redis.call(ARGV[1], KEYS[1], ARGV[4], value)
+    end
 end
-return result
+
+local result = redis.call(ARGV[1], KEYS[1], ARGV[4], ARGV[3])
+if result == tonumber(ARGV[3]) then
+   redis.call('hMSet', KEYS[1], '__meta', ARGV[5])
+   redis.call('sAdd', KEYS[2], KEYS[1])
+end
 LUA
             ,
             $newArgs,
