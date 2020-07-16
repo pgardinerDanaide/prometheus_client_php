@@ -28,9 +28,10 @@ class Counter extends Collector
 
     /**
      * @param int $count e.g. 2
+     * @param array $key e.g. 'key_1'
      * @param array $labels e.g. ['status', 'opcode']
      */
-    public function incBy($count, array $labels = []): void
+    public function incBy($count, string $key, array $labels = []): void
     {
         $this->storageAdapter->updateCounter(
             [
@@ -38,6 +39,7 @@ class Counter extends Collector
                 'help' => $this->getHelp(),
                 'type' => $this->getType(),
                 'labels' => $labels,
+                'key' => $key,
                 'value' => $count,
                 'command' => Adapter::COMMAND_INCREMENT_INTEGER,
             ]
