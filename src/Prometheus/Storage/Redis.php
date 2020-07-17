@@ -264,26 +264,26 @@ LUA
     public function updateCounter(array $data): void
     {
         $this->openConnection();
+        $field_key = [
+            'key' => $data['key'],
+            'labels' => $data['labels'],
+        ];
         $metaData = $data;
         unset($metaData['value']);
-        unset($metaData['labelValues']);
         unset($metaData['command']);
-
-        $field_key = [
-            'key' => $metaData['key'],
-            'labels' => $metaData['labels'],
-        ];
+        unset($metaData['labels']);
+        unset($metaData['key']);
 
         $newArgs = [
             $this->toMetricKey($data),
             self::$prefix . Counter::TYPE . self::PROMETHEUS_METRIC_KEYS_SUFFIX,
             $this->getRedisCommand($data['command']),
-            $metaData['key'],
+            $data['key'],
             $data['value'],
             json_encode($field_key),
             json_encode($metaData)
         ];
-        $ret = $this->redis->eval(
+        $this->redis->eval(
             <<<LUA
 local row = redis.call('hexists', KEYS[1], ARGV[4])
 if row == 0 then
@@ -415,11 +415,13 @@ LUA
             unset($raw['__meta']);
             $counter['samples'] = [];
             foreach ($raw as $k => $value) {
+                $key_n_labels = json_decode($k, true);
                 $counter['samples'][] = [
                     'name' => $counter['name'],
                     'labelNames' => [],
                     'labelValues' => [],
-                    'labels' => json_decode($k, true),
+                    'labels' => $key_n_labels['labels'],
+                    'key' => $key_n_labels['key'],
                     'value' => $value,
                 ];
             }
