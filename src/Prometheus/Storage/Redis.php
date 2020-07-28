@@ -175,41 +175,87 @@ class Redis implements Adapter
         $metaData = $data;
         unset($metaData['value']);
         unset($metaData['labelValues']);
+        unset($metaData['key']);
         $newData = [
             $this->toMetricKey($data),
             self::$prefix . Histogram::TYPE . self::PROMETHEUS_METRIC_KEYS_SUFFIX,
+            $data['key'],
             $data['value'],
-            json_encode(['labels' => $data['labels'], 'buckets' => $data['buckets']]),
+            json_encode(['key' => $data['key'], 'labels' => $data['labels'], 'buckets' => $data['buckets']]),
             json_encode($metaData)
         ];
         $this->redis->eval(
             <<<LUA
-local function round (number, precision)
+local function round(number, precision)
     local fmtStr = string.format('%%0.%sf',precision)
     number = string.format(fmtStr,number)
     return number
 end
 
-local template = cjson.decode(ARGV[2])
+local function increment_from_previous(key, field, previous, bucket)
+    if previous ~= nil and previous[bucket] ~= nil then
+        redis.call('hIncrBy', key, cjson.encode(field), previous[bucket])
+    end
+end
+
+local function increment_float_from_previous(key, field, previous, bucket)
+    if previous ~= nil and previous[bucket] ~= nil then
+        redis.call('hIncrByFloat', key, cjson.encode(field), previous[bucket])
+    end
+end
+
+local template = cjson.decode(ARGV[3])
+template.b = "count"
+
+local previous = {}
+local row = redis.call('hexists', KEYS[1], cjson.encode(template))
+if row == 0 then
+    local key = '*\"key\":\"'..ARGV[1]..'\"*'
+    -- Its needed to use the count paramenter in order to return all fields
+    -- TODO: find a solution to this particular corner case (a metric with more than 10000 fields)
+    local pre = redis.call('hscan', KEYS[1], 0, 'match', key, 'COUNT', 10000)
+    if type(pre) == "table" and next(pre[2]) ~= nil then
+        for i,v in ipairs(pre[2]) do
+            if (i % 2 ~= 0) then
+                local aux = cjson.decode(v)
+                previous[aux.b] = pre[2][i+1]
+                redis.call('hdel', KEYS[1], v)
+            end
+        end
+    end
+end
+
 template.b = "sum"
-local increment = redis.call('hIncrByFloat', KEYS[1], cjson.encode(template), ARGV[1])
-if round(increment, 2) == round(ARGV[1], 2) then
+local increment = redis.call('hIncrByFloat', KEYS[1], cjson.encode(template), ARGV[2])
+if round(increment, 2) == round(ARGV[2], 2) then
+    -- New histogram
     redis.call('sAdd', KEYS[2], KEYS[1])
-    local meta = cjson.decode(ARGV[3])
+    local meta = cjson.decode(ARGV[4])
     meta.labels = nil
     meta.buckets = nil
     redis.call('hSet', KEYS[1], '__meta', cjson.encode(meta))
 end
+-- Increase sum bucket with a previus value (if needed)
+increment_float_from_previous(KEYS[1], template, previous, "sum")
+
 for k, v in pairs(template.buckets) do
+    -- Filling up all buckets
     template.b = v
-    if tonumber(ARGV[1]) <= tonumber(v) then
+    if tonumber(ARGV[2]) <= tonumber(v) then
         redis.call('hIncrBy', KEYS[1], cjson.encode(template), 1)
     else
         redis.call('hIncrBy', KEYS[1], cjson.encode(template), 0)
     end
+    -- Increase with a previus value (if needed)
+    increment_from_previous(KEYS[1], template, previous, v)
 end
+
+-- Increase sum bucket with a previus value (if needed)
 template.b = "count"
 redis.call('hIncrBy', KEYS[1], cjson.encode(template), 1)
+
+-- Increase count bucket with a previus value (if needed)
+increment_from_previous(KEYS[1], template, previous, "count")
 LUA
             ,
             $newData,
@@ -264,27 +310,43 @@ LUA
     public function updateCounter(array $data): void
     {
         $this->openConnection();
+        $field_key = [
+            'key' => $data['key'],
+            'labels' => $data['labels'],
+        ];
         $metaData = $data;
         unset($metaData['value']);
-        unset($metaData['labelValues']);
         unset($metaData['command']);
+        unset($metaData['labels']);
+        unset($metaData['key']);
 
         $newArgs = [
             $this->toMetricKey($data),
             self::$prefix . Counter::TYPE . self::PROMETHEUS_METRIC_KEYS_SUFFIX,
             $this->getRedisCommand($data['command']),
+            $data['key'],
             $data['value'],
-            json_encode($metaData['labels']),
+            json_encode($field_key),
             json_encode($metaData)
         ];
         $this->redis->eval(
             <<<LUA
-local result = redis.call(ARGV[1], KEYS[1], ARGV[3], ARGV[2])
-if result == tonumber(ARGV[2]) then
-    redis.call('hMSet', KEYS[1], '__meta', ARGV[4])
-    redis.call('sAdd', KEYS[2], KEYS[1])
+local row = redis.call('hexists', KEYS[1], ARGV[4])
+if row == 0 then
+    local key = '*\"key\":"'..ARGV[2]..'"*'
+    local pre = redis.call('hscan', KEYS[1], 0, 'match', key)
+    if type(pre) == "table" and next(pre[2]) ~= nil then
+      local value = pre[2][2]
+      redis.call('hdel', KEYS[1], pre[2][1])
+      redis.call(ARGV[1], KEYS[1], ARGV[4], value)
+    end
 end
-return result
+
+local result = redis.call(ARGV[1], KEYS[1], ARGV[4], ARGV[3])
+if result == tonumber(ARGV[3]) then
+   redis.call('hMSet', KEYS[1], '__meta', ARGV[5])
+   redis.call('sAdd', KEYS[2], KEYS[1])
+end
 LUA
             ,
             $newArgs,
@@ -399,11 +461,13 @@ LUA
             unset($raw['__meta']);
             $counter['samples'] = [];
             foreach ($raw as $k => $value) {
+                $key_n_labels = json_decode($k, true);
                 $counter['samples'][] = [
                     'name' => $counter['name'],
                     'labelNames' => [],
                     'labelValues' => [],
-                    'labels' => json_decode($k, true),
+                    'labels' => $key_n_labels['labels'],
+                    'key' => $key_n_labels['key'],
                     'value' => $value,
                 ];
             }

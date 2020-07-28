@@ -93,15 +93,16 @@ class Histogram extends Collector
 
     /**
      * @param double $value e.g. 123
+     * @param array $key e.g. 'key_1'
      * @param array $labels e.g. ['status' => 'opcode']
      */
-    public function observe(float $value, array $labels = []): void
+    public function observe(float $value, string $key, array $labels = []): void
     {
-
         // 'le' is a reserved label
         if (isset($labels['le'])) {
             unset($labels['le']);
         }
+
         $this->storageAdapter->updateHistogram(
             [
                 'value' => $value,
@@ -109,6 +110,7 @@ class Histogram extends Collector
                 'help' => $this->getHelp(),
                 'type' => $this->getType(),
                 'labels' => $labels,
+                'key' => $key,
                 'buckets' => $this->buckets,
             ]
         );

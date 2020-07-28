@@ -46,9 +46,10 @@ class Gauge extends Collector
 
     /**
      * @param $value
-     * @param array $labels
+     * @param array $key e.g. 'key_1'
+     * @param array $labels e.g. ['status' => 'opcode']
      */
-    public function incBy($value, array $labels = []): void
+    public function incBy($value, string $key, array $labels = []): void
     {
         $this->storageAdapter->updateGauge(
             [
@@ -56,6 +57,7 @@ class Gauge extends Collector
                 'help' => $this->getHelp(),
                 'type' => $this->getType(),
                 'labels' => $labels,
+                'key' => $key,
                 'value' => $value,
                 'command' => Adapter::COMMAND_INCREMENT_FLOAT,
             ]
