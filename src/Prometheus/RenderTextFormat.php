@@ -15,40 +15,52 @@ class RenderTextFormat
     public function render(array $metrics): string
     {
         usort($metrics, function (MetricFamilySamples $a, MetricFamilySamples $b) {
-            return strcmp($a->getName(), $b->getName());
+            return strnatcmp($a->getName(), $b->getName());
         });
 
         $lines = [];
-
         foreach ($metrics as $metric) {
-            $lines[] = "# HELP " . $metric->getName() . " {$metric->getHelp()}";
-            $lines[] = "# TYPE " . $metric->getName() . " {$metric->getType()}";
-            foreach ($metric->getSamples() as $sample) {
-                $lines[] = $this->renderSample($metric, $sample);
+            $lines[] = "# HELP {$metric->getName()} {$metric->getHelp()}";
+            $lines[] = "# TYPE {$metric->getName()} {$metric->getType()}";
+
+            $samples = array_map("Prometheus\RenderTextFormat::renderSample", $metric->getSamples());
+            natsort($samples);
+
+            foreach ($samples as $sample) {
+                $lines[] = $sample;
             }
         }
         return implode("\n", $lines) . "\n";
     }
 
     /**
-     * @param MetricFamilySamples $metric
      * @param Sample $sample
      * @return string
      */
-    private function renderSample(MetricFamilySamples $metric, Sample $sample): string
+    private static function renderSample(Sample $sample): string
     {
+        $labels = $sample->getLabels();
+        uksort($labels, "Prometheus\RenderTextFormat::compareLabels");
+
         $escapedLabels = [];
-        foreach ($sample->getLabels() as $labelName => $labelValue) {
-            $escapedLabels[] = $labelName . '="' . $this->escapeLabelValue($labelValue) . '"';
+        foreach ($labels as $labelName => $labelValue) {
+            $escapedLabels[] = $labelName . '="' . RenderTextFormat::escapeLabelValue($labelValue) . '"';
         }
+
         return $sample->getName() . '{' . implode(',', $escapedLabels) . '} ' . $sample->getValue();
+    }
+
+    private static function compareLabels($a, $b) : int
+    {
+        // Set le bucket label to the rightmost column.
+        return ($b === 'le')? -1 : strnatcmp($a, $b);
     }
 
     /**
      * @param string $v
      * @return string
      */
-    private function escapeLabelValue($v): string
+    private static function escapeLabelValue($v): string
     {
         $v = str_replace("\\", "\\\\", $v);
         $v = str_replace("\n", "\\n", $v);
