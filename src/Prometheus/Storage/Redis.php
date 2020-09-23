@@ -397,6 +397,8 @@ LUA
                                 $sum_bucket['value'] += $item;
                                 break;
                         }
+                        $sample['name'] = $histogram['name'] . '_' . $bucket['b'];
+                        $histogram['samples'][] = $sample;
                     } else {
                         $sum_bucket['value'] += $item;
                         $sample['labels']['le'] = strval($bucket['b']);
