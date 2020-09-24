@@ -392,6 +392,7 @@ LUA
                                 $bucket['name'] = $histogram['name'];
                                 $sample['labels']['le'] = '+inf';
                                 $histogram['samples'][] = $sample;
+                                unset($sample['labels']['le']);
                                 break;
                             case 'sum':
                                 $sum_bucket['value'] += $item;
