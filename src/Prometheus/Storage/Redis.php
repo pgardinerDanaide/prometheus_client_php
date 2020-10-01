@@ -225,16 +225,20 @@ if row == 0 then
     end
 end
 
+-- Increasing sum bucket
 template.b = "sum"
 local increment = redis.call('hIncrByFloat', KEYS[1], cjson.encode(template), ARGV[2])
+
+-- Checking if is a new histogram
 if round(increment, 2) == round(ARGV[2], 2) then
-    -- New histogram
+    -- Registering a new histogram
     redis.call('sAdd', KEYS[2], KEYS[1])
     local meta = cjson.decode(ARGV[4])
     meta.labels = nil
     meta.buckets = nil
     redis.call('hSet', KEYS[1], '__meta', cjson.encode(meta))
 end
+
 -- Increase sum bucket with a previus value (if needed)
 increment_float_from_previous(KEYS[1], template, previous, "sum")
 
@@ -250,12 +254,15 @@ for k, v in pairs(template.buckets) do
     increment_from_previous(KEYS[1], template, previous, v)
 end
 
--- Increase sum bucket with a previus value (if needed)
+-- Increase count bucket
 template.b = "count"
 redis.call('hIncrBy', KEYS[1], cjson.encode(template), 1)
 
 -- Increase count bucket with a previus value (if needed)
 increment_from_previous(KEYS[1], template, previous, "count")
+
+-- Increase total sum
+redis.call('hIncrByFloat', KEYS[1], 'total', ARGV[2])
 LUA
             ,
             $newData,
@@ -371,40 +378,43 @@ LUA
                 'labels' => [],
                 'value' => 0,
             ];
+            $total_sum_sample = $sum_bucket;
             $count_bucket = [
                 'name' => $histogram['name'] . '_count',
                 'labels' => [],
                 'value' => 0,
             ];
             foreach($raw as $key => $item) {
-                if ($key === "__meta") {
-                    $histogram = array_merge($histogram, json_decode($item, true));
-                } else {
-                    $bucket = json_decode($key, true);
-                    $sample = [];
-                    $sample['name'] = $histogram['name'];
-                    $sample['labels'] = $bucket['labels'];
-                    $sample['value'] = $item;
-                    if(!is_numeric($bucket['b'])) {
-                        switch ($bucket['b']) {
-                            case 'count':
-                                $count_bucket['value'] += $item;
-                                $bucket['name'] = $histogram['name'];
-                                $sample['labels']['le'] = '+inf';
-                                $histogram['samples'][] = $sample;
-                                unset($sample['labels']['le']);
-                                break;
-                            case 'sum':
-                                $sum_bucket['value'] += $item;
-                                break;
+                switch ($key) {
+                    case "__meta":
+                        $histogram = array_merge($histogram, json_decode($item, true));
+                    break;
+                    case 'total':
+                        $total_sum_sample['value'] = $item;
+                        break;
+                    default:
+                        $bucket = json_decode($key, true);
+                        $sample = [];
+                        $sample['name'] = $histogram['name'];
+                        $sample['labels'] = $bucket['labels'];
+                        $sample['value'] = $item;
+                        if(!is_numeric($bucket['b'])) {
+                            if ($bucket['b'] === 'count') {
+                                    $count_bucket['value'] += $item;
+                                    $sample['name'] = $histogram['name'] . '_bucket';
+                                    $sample['labels']['le'] = '+inf';
+                                    $histogram['samples'][] = $sample;
+                                    unset($sample['labels']['le']);
+                            }
+                            $sample['name'] = $histogram['name'] . '_' . $bucket['b'];
+                            $histogram['samples'][] = $sample;
+                        } else {
+                            $sum_bucket['value'] += $item;
+                            $sample['name'] .= '_bucket';
+                            $sample['labels']['le'] = strval($bucket['b']);
+                            $histogram['samples'][] = $sample;
                         }
-                        $sample['name'] = $histogram['name'] . '_' . $bucket['b'];
-                        $histogram['samples'][] = $sample;
-                    } else {
-                        $sum_bucket['value'] += $item;
-                        $sample['labels']['le'] = strval($bucket['b']);
-                        $histogram['samples'][] = $sample;
-                    }
+                        break;
                 }
             }
             
@@ -414,7 +424,7 @@ LUA
                 }
                 return ($a['labels'] < $b['labels']) ? -1 : 1;
             }
-            $histogram['samples'][] = $sum_bucket;
+            $histogram['samples'][] = $total_sum_sample;
             $histogram['samples'][] = $count_bucket;
             $histograms[] = $histogram;
         }
