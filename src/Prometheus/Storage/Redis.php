@@ -418,12 +418,9 @@ LUA
                 }
             }
             
-            function cmp($a, $b) {
-                if ($a['labels'] == $b['labels']) {
-                    return 0;
-                }
-                return ($a['labels'] < $b['labels']) ? -1 : 1;
-            }
+            usort($histogram['samples'], function ($a, $b) {
+                return strcmp(implode("", $a['labels']), implode("", $b['labels']));
+            });
             $histogram['samples'][] = $total_sum_sample;
             $histogram['samples'][] = $count_bucket;
             $histograms[] = $histogram;
